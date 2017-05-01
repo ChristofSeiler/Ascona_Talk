@@ -1,10 +1,9 @@
 ---
-title: "Latent Class Analysis for CyTOF Data"
+title: "Latent Class Regression for CyTOF Data"
 output: html_document
 author: Christof Seiler
 date: May, 2017
 params:
-  num_chains: "2"
   num_cells: "10000"
   num_latent_classes: "2"
   num_bins: "8"
@@ -16,7 +15,7 @@ knitr::opts_chunk$set(echo = TRUE)
 
 ## Goal
 
-The goal is to use ``Latent Class Regression`` for CyTOF data using ``Stan``.
+The goal is to use ``Latent Class Regression`` for CyTOF data with ``Stan``. In this code, we use variational inference to speedup computations. In practice, we recommend to do full sampling using Hamiltonian Monte Carlo. This is not shown here, because it usually takes a few hours to compute on 10,000 cells.
 
 ## Load Packages
 
@@ -26,17 +25,8 @@ library(magrittr)
 library(stringr)
 library(reshape2)
 library(dplyr)
-library(ggfortify)
-library(GGally)
-library(ggrepel)
 library(flowCore)
 library(rstan)
-library(rethinking)
-library(gridExtra)
-library(grid)
-library(BatchJobs)
-library(parallel)
-library(FactoMineR)
 ```
 
 ## Load Data
@@ -90,7 +80,7 @@ print(ggobj)
 dev.off()
 ```
 
-Tranform raw counts.
+Transform raw counts.
 
 ```{r}
 num_markers = 33
@@ -123,25 +113,15 @@ plot_counts = function(protein_name) {
 }
 for(marker_name in names(df_samples)[1:num_markers]) 
   plot_counts(marker_name) %>% print
-# print to pdf for slides
-pdf("One_Marker_Separated_Donors_Bodenmiller_2012.pdf",height = 5,width = 7)
-for(marker_name in names(df_samples)[1:num_markers]) 
-  plot_counts(marker_name) %>% print
-dev.off()
 ```
 
-## Latent Class Analysis
+## Latent Class Regression
 
-The transformed count data are not normal. To handle possible multimodal distribution, we bin the transformed counts and store them in a huge contigency table. We then use tools from categortical data analysis.
+The transformed count data are not normal. To handle possible multimodal distribution, we bin the transformed counts and store them in a huge contingency table. We then use tools from categorical data analysis.
 
 ```{r}
 set.seed(1234)
 num_cells = as.integer(params$num_cells)
-# cell_n = round(num_cells/length(levels(df_samples$donor)))
-# subsample_ids = lapply(levels(df_samples$donor),function(donor_id) {
-#   all_ids = which(df_samples$donor == donor_id)
-#   sample(x = all_ids,size = cell_n)
-# }) %>% unlist
 subsample_ids = sample(x = nrow(df_samples),
                        size = num_cells,
                        replace = FALSE)
@@ -174,16 +154,11 @@ plot_binned_counts = function(protein_name) {
 }
 for(marker_name in names(df_samples_binned)[1:num_markers]) 
   plot_binned_counts(marker_name) %>% print
-# print to pdf for slides
-pdf("One_Marker_Separated_Donors_Binned_Bodenmiller_2012.pdf",height = 5,width = 7)
-for(marker_name in names(df_samples_binned)[1:num_markers]) 
-  plot_binned_counts(marker_name) %>% print
-dev.off()
 ```
 
-### Bayesian Model (One-Step Approach)
+### Bayesian Model
 
-We build one model and perform inference of parameters using Stan. This way we will carry over uncertainty.
+We build a model and perform parameter inference using Stan.
 
 ```{r}
 model_code = 
@@ -241,7 +216,7 @@ model {
   }
 }"
 model = stan_model(model_code = model_code,
-                   model_name = "lca_model")
+                   model_name = "lcr_model")
 ```
 
 Prepare data.
@@ -266,7 +241,6 @@ stan_data = list(N = N,
                  K = K,
                  D = D,
                  alpha = rep(1/K,K),
-                 #beta = rep(1/R,R),
                  x = x,
                  y = y,
                  donor = donor)
@@ -275,16 +249,13 @@ stan_data = list(N = N,
 Variational inference.
 
 ```{r}
-par_list = mclapply(1:params$num_chains,function(chain_id) {
-  fit_vb = vb(model,
-              data = stan_data,
-              seed = chain_id)
-  par = rstan::extract(fit_vb)
-  par
-},mc.cores = params$num_chains)
+fit_vb = vb(model,
+            data = stan_data,
+            seed = 1)
+par = rstan::extract(fit_vb)
 ```
 
-Analyze variational inference results. Extract marginal class-membership probability.
+Extract marginal class-membership probability.
 
 ```{r}
 print_latent_class_labels = function(beta) {
@@ -316,52 +287,41 @@ print_latent_class_labels = function(beta) {
   latent_class_labels = sapply(1:R,function(r) credible_class(r)) 
   latent_class_labels
 }
-for(chain_id in 1:params$num_chains) {
-  print(paste("chain_id:",chain_id))
-  print_latent_class_labels(par_list[[chain_id]]$beta) %>% print
-}
+print_latent_class_labels(par$beta)
 ```
 
-Plot class-conditional probability for variational inference results.
+Extract class-conditional probabilities.
 
-```{r}
-post_cat = function(pi,chain_id,latent_class,probs) {
+```{r fig.height=6,fig.width=10}
+post_cat = function(pi,latent_class,probs) {
   cat_all = apply(pi,MARGIN = c(2,3,4),function(x) quantile(x,probs = probs))
   cat = cat_all[latent_class,,] %>% t %>% data.frame
   names(cat)[1:J] = names(df_samples_binned)[1:J]
   cat$percentile = 100*probs
   cat$bin = factor(1:nrow(cat))
-  cat$chain_id = chain_id
   cat$latent_class = latent_class
-  cat_long = melt(cat,id.vars = c("bin","percentile","chain_id","latent_class"))
+  cat_long = melt(cat,id.vars = c("bin","percentile","latent_class"))
   cat_long
 }
-post_cat_summary = function(pi,chain_id,latent_class) {
-  cat_long = cbind(post_cat(pi,chain_id,latent_class,0.5),
-                   perc_low = post_cat(pi,chain_id,latent_class,0.025)$value,
-                   perc_up = post_cat(pi,chain_id,latent_class,0.975)$value)
+post_cat_summary = function(pi,latent_class) {
+  cat_long = cbind(post_cat(pi,latent_class,0.5),
+                   perc_low = post_cat(pi,latent_class,0.025)$value,
+                   perc_up = post_cat(pi,latent_class,0.975)$value)
   cat_long$percentile = factor(cat_long$percentile)
   cat_long
 }
-for(chain_id in 1:params$num_chains) {
-  pi = par_list[[chain_id]]$pi
-  cat_long_compare = lapply(1:R,function(r) post_cat_summary(pi,chain_id,r)) %>%
-    do.call(rbind,.)
-  cat_long_compare$latent_class = factor(cat_long_compare$latent_class)
-  levels(cat_long_compare$latent_class) = print_latent_class_labels(par_list[[chain_id]]$beta)
-  obj = ggplot(cat_long_compare,aes(x = bin,y = value,fill = latent_class)) + 
-    geom_bar(stat = "identity",position = position_dodge()) +
-    geom_errorbar(position = position_dodge(.9), width = .2, aes(ymin = perc_low, ymax = perc_up)) +
-    facet_wrap(~ variable,nrow = 5) +
-    ggtitle(paste("Class-Conditional Probability with R =",R,"(VB)")) +
-    theme(axis.title = element_blank()) +
-    xlab("arcsinh transformed counts") +
-    theme(legend.position = "bottom")
-  print(obj)
-  pdf(paste0("Class_Conditional_Probability_R",R,"_",chain_id,"_VB.pdf"),height = 6,width = 10)
-  print(obj)
-  dev.off()
-}
+cat_long_compare = lapply(1:R,function(r) post_cat_summary(par$pi,r)) %>%
+  do.call(rbind,.)
+cat_long_compare$latent_class = factor(cat_long_compare$latent_class)
+levels(cat_long_compare$latent_class) = print_latent_class_labels(par$beta)
+ggplot(cat_long_compare,aes(x = bin,y = value,fill = latent_class)) + 
+  geom_bar(stat = "identity",position = position_dodge()) +
+  geom_errorbar(position = position_dodge(.9), width = .2, aes(ymin = perc_low, ymax = perc_up)) +
+  facet_wrap(~ variable,nrow = 5) +
+  ggtitle(paste("Class-Conditional Probability with R =",R,"(VB)")) +
+  theme(axis.title = element_blank()) +
+  xlab("arcsinh transformed counts") +
+  theme(legend.position = "bottom")
 ```
 
 ## Session Info
