@@ -183,7 +183,7 @@ dev.off()
 
 ### Bayesian Model (One-Step Approach)
 
-We build one model and perform inference of parameters using Stan. This way we will carry over uncertainty. Try Correlated Topic Model for theta (in transformed parameters block).
+We build one model and perform inference of parameters using Stan. This way we will carry over uncertainty.
 
 ```{r}
 model_code = 
