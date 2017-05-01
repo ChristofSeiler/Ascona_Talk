@@ -70,14 +70,9 @@ dim(df_samples)
 Plot cell counts per sample.
 
 ```{r}
-ggobj = ggplot(data = df_samples, aes(patient, fill = condition)) + 
+ggplot(data = df_samples, aes(patient, fill = condition)) + 
   geom_bar(position="dodge") +
   ggtitle("Cell Count")
-ggobj
-## print to pdf for slides
-pdf("Cell_Count_Bodenmiller_2012.pdf",height = 3,width = 4)
-print(ggobj)
-dev.off()
 ```
 
 Transform raw counts.
