@@ -1,0 +1,17 @@
+file_name,condition,patient,shortname
+PBMC8_30min_patient1_BCR-XL.fcs,BCRXL,1,p1_BCR-XL
+PBMC8_30min_patient1_Reference.fcs,Ref,1,p1_Ref
+PBMC8_30min_patient2_BCR-XL.fcs,BCRXL,2,p2_BCR-XL
+PBMC8_30min_patient2_Reference.fcs,Ref,2,p2_Ref
+PBMC8_30min_patient3_BCR-XL.fcs,BCRXL,3,p3_BCR-XL
+PBMC8_30min_patient3_Reference.fcs,Ref,3,p3_Ref
+PBMC8_30min_patient4_BCR-XL.fcs,BCRXL,4,p4_BCR-XL
+PBMC8_30min_patient4_Reference.fcs,Ref,4,p4_Ref
+PBMC8_30min_patient5_BCR-XL.fcs,BCRXL,5,p5_BCR-XL
+PBMC8_30min_patient5_Reference.fcs,Ref,5,p5_Ref
+PBMC8_30min_patient6_BCR-XL.fcs,BCRXL,6,p6_BCR-XL
+PBMC8_30min_patient6_Reference.fcs,Ref,6,p6_Ref
+PBMC8_30min_patient7_BCR-XL.fcs,BCRXL,7,p7_BCR-XL
+PBMC8_30min_patient7_Reference.fcs,Ref,7,p7_Ref
+PBMC8_30min_patient8_BCR-XL.fcs,BCRXL,8,p8_BCR-XL
+PBMC8_30min_patient8_Reference.fcs,Ref,8,p8_Ref
