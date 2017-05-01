@@ -16,7 +16,7 @@ knitr::opts_chunk$set(echo = TRUE)
 
 ## Goal
 
-The goal is to build a Bayesian hierarchical model of CyTOF data and infer model parameters using ``Stan``.
+The goal is to use ``Latent Class Regression`` for CyTOF data using ``Stan``.
 
 ## Load Packages
 
@@ -359,126 +359,6 @@ for(chain_id in 1:params$num_chains) {
     theme(legend.position = "bottom")
   print(obj)
   pdf(paste0("Class_Conditional_Probability_R",R,"_",chain_id,"_VB.pdf"),height = 6,width = 10)
-  print(obj)
-  dev.off()
-}
-```
-
-Make sure that probability vectors add up to one.
-
-```{r}
-normalize_pi = function(pi_vb) {
-  for (r in 1:R) {
-    for (j in 1:J)
-      pi_vb[r,j,] = pi_vb[r,j,] / sum(pi_vb[r,j,])
-    }
-  pi_vb
-}
-normalize_theta = function(theta_vb) {
-  for (n in 1:N)
-    theta_vb[n,] = theta_vb[n,] / sum(theta_vb[n,])
-  theta_vb
-}
-```
-
-Initialize sampling with varational inference.
-
-```{r}
-iter = 1000
-warmup = 500
-create_init_data = function(par) {
-  pi_vb = apply(X = par$pi,MARGIN = c(2,3,4),FUN = mean)
-  theta_vb = apply(X = par$theta,MARGIN = c(2,3),FUN = mean)
-  init_data = list(pi = normalize_pi(pi_vb),
-                   eta = apply(X = par$eta,MARGIN = c(2,3),FUN = mean),
-                   beta = apply(X = par$beta,MARGIN = c(2,3),FUN = mean),
-                   theta = normalize_theta(theta_vb),
-                   z = apply(X = par$z,MARGIN = c(2,3,4),FUN = mean),
-                   sigma_e = colMeans(par$sigma_e),
-                   sigma_z = apply(X = par$sigma_z,MARGIN = c(2,3),FUN = mean),
-                   sigma_b = colMeans(par$sigma_b))
-  init_data
-}
-init_data_all = lapply(par_list,create_init_data)
-run_stan = function(seed) {
-  library(rstan)
-  fit_mcmc = sampling(model,
-                      data = stan_data,
-                      iter = iter,
-                      init = init_data_all,
-                      warmup = warmup,
-                      chains = length(init_data_all),
-                      cores = length(init_data_all),
-                      seed = seed,
-                      refresh = 1)
-  fit_mcmc
-}
-file_dir = paste0("LCA_",params$num_latent_classes)
-reg = makeRegistry(id = file_dir, file.dir = file_dir)
-batchExport(reg, li=list(model = model, 
-                         stan_data = stan_data,
-                         iter = iter,
-                         init_data_all = init_data_all,
-                         warmup = warmup))
-batchMap(reg, run_stan, 12345)
-submitJobs(reg)
-waitForJobs(reg,sleep = 360)
-fit_list = reduceResultsList(reg)
-fit_mcmc = fit_list[[1]]
-save(fit_mcmc,file = paste0("fit_mcmc_",params$num_latent_classes,".Rdata"))
-```
-
-Traceplots.
-
-```{r fig.height=9,fig.width=10}
-plot_chains = function(par_name) {
-  par = rstan::extract(fit_mcmc,
-                     pars = par_name,
-                     permuted = FALSE,
-                     inc_warmup = TRUE)
-  par_warmup = melt(par[1:iter,,],
-                    varnames = c("iteration","chain","parameter"))
-  ggplot(par_warmup, aes(x = iteration, y = value, color = parameter)) +
-    geom_line(show.legend = TRUE) +
-    facet_wrap(~ chain)
-}
-plot_chains(paste0("beta[",1:R,",2]"))
-plot_chains(paste0("pi[1,1,",1:K,"]"))
-plot_chains(paste0("pi[2,1,",1:K,"]"))
-plot_chains(paste0("pi[1,2,",1:K,"]"))
-plot_chains(paste0("pi[2,2,",1:K,"]"))
-plot_chains(paste0("theta[",1:R,",1]"))
-```
-
-Extract class-conditional probability and visualize.
-
-```{r fig.height=6,fig.width=10}
-for(chain_id in 1:params$num_chains) {
-  pi_w_burnin = rstan::extract(fit_mcmc,
-                               pars = "pi",
-                               permuted = FALSE,
-                               inc_warmup = TRUE)
-  pi = pi_w_burnin[(warmup+1):iter,chain_id,] %>% array(.,dim = c(nrow(.),R,J,K))
-  cat_long_compare = lapply(1:R,function(r) post_cat_summary(pi,chain_id,r)) %>%
-    do.call(rbind,.)
-  beta_w_burnin = rstan::extract(fit_mcmc,
-                               pars = "beta",
-                               permuted = FALSE,
-                               inc_warmup = TRUE)
-  beta = beta_w_burnin[(warmup+1):iter,chain_id,] 
-  beta = array(beta,dim = c(nrow(beta),R,2))
-  cat_long_compare$latent_class = factor(cat_long_compare$latent_class)
-  levels(cat_long_compare$latent_class) = print_latent_class_labels(beta)
-  obj = ggplot(cat_long_compare,aes(x = bin,y = value,fill = latent_class)) + 
-    geom_bar(stat = "identity",position = position_dodge()) +
-    geom_errorbar(position = position_dodge(.9), width = .2, aes(ymin = perc_low, ymax = perc_up)) +
-    facet_wrap(~ variable,nrow = 5) +
-    ggtitle(paste("Class-Conditional Probability with R =",R,"(HMC)")) +
-    theme(axis.title = element_blank()) +
-    xlab("arcsinh transformed counts") +
-    theme(legend.position = "bottom")
-  print(obj)
-  pdf(paste0("Class_Conditional_Probability_R",R,"_",chain_id,"_HMC.pdf"),height = 6,width = 10)
   print(obj)
   dev.off()
 }
