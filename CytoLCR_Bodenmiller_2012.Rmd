@@ -287,7 +287,7 @@ print_latent_class_labels(par$beta)
 
 Extract class-conditional probabilities.
 
-```{r fig.height=6,fig.width=10}
+```{r fig.height=9,fig.width=10}
 post_cat = function(pi,latent_class,probs) {
   cat_all = apply(pi,MARGIN = c(2,3,4),function(x) quantile(x,probs = probs))
   cat = cat_all[latent_class,,] %>% t %>% data.frame
